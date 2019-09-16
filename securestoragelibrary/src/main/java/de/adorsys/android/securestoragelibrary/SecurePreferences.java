@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 adorsys GmbH & Co. KG
+ * Copyright (C) 2019 SoryApps & adorsys GmbH & Co. KG
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,330 +16,278 @@
 
 package de.adorsys.android.securestoragelibrary;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
+import android.util.Base64;
 
+import java.lang.reflect.InvocationTargetException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import static android.content.Context.MODE_PRIVATE;
 import static de.adorsys.android.securestoragelibrary.SecureStorageException.ExceptionType.CRYPTO_EXCEPTION;
 
 /**
  * Handles every use case for the developer using Secure Storage.
  * Encryption, Decryption, Storage, Removal etc.
  */
-public final class SecurePreferences {
-    private static final String KEY_SHARED_PREFERENCES_NAME = "SecurePreferences";
-    private static final String KEY_SET_COUNT_POSTFIX = "_count";
+public final class SecurePreferences implements SharedPreferences {
+    private static final String HASH = "SHA-256";
 
-    // hidden constructor to disable initialization
-    private SecurePreferences() {
-    }
+    private static final String PREFS_ID_PREFIX = "SECST";
 
-    /**
-     * Takes plain string value, encrypts it and stores it encrypted in the SecureStorage on the Android Device
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @param value   Plain String value that will be encrypted and stored in the SecureStorage
-     */
-    public static void setValue(@NonNull Context context,
-                                @NonNull String key,
-                                @NonNull String value) throws SecureStorageException {
-        Context applicationContext = context.getApplicationContext();
-        if (!KeystoreTool.keyPairExists()) {
-            KeystoreTool.generateKeyPair(applicationContext);
-        }
+    private SharedPreferences preferences;
+    private Context appContext;
+    private KeystoreTool kst;
 
-        String transformedValue = KeystoreTool.encryptMessage(applicationContext, value);
-        if (TextUtils.isEmpty(transformedValue)) {
-            throw new SecureStorageException(context.getString(R.string.message_problem_encryption), null, CRYPTO_EXCEPTION);
-        } else {
-            setSecureValue(applicationContext, key, transformedValue);
+    public SecurePreferences(@NonNull Context context, @NonNull String preferencesId)
+    {  init(context, preferencesId);  }
+    private void init(@NonNull Context context, @NonNull String preferencesId)
+    {
+        context = context.getApplicationContext();
+        appContext = context;
+        preferences = context.getSharedPreferences((PREFS_ID_PREFIX + preferencesId), Context.MODE_PRIVATE);
+
+        try
+        {  kst = new KeystoreTool(preferencesId);  }
+        catch(SecureStorageException e)
+        {
+            // Alt: Log.e()
+            throw new SecurityException("Error using Secure Preferences (start)");
         }
     }
 
-    /**
-     * Takes plain string value, encrypts it and stores it encrypted in the SecureStorage on the Android Device
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @param value   Plain boolean value that will be encrypted and stored in the SecureStorage
-     */
-    public static void setValue(@NonNull Context context,
-                                @NonNull String key,
-                                boolean value) throws SecureStorageException {
-        setValue(context, key, String.valueOf(value));
-    }
+	// Hashing the key makes it difficult to implement getAll()
+    private static String hashKey(@NonNull String key)
+    {
+        final MessageDigest messageDigest;
 
-    /**
-     * Takes plain string value, encrypts it and stores it encrypted in the SecureStorage on the Android Device
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @param value   Plain float value that will be encrypted and stored in the SecureStorage
-     */
-    public static void setValue(@NonNull Context context,
-                                @NonNull String key,
-                                float value) throws SecureStorageException {
-        setValue(context, key, String.valueOf(value));
-    }
-
-    /**
-     * Takes plain string value, encrypts it and stores it encrypted in the SecureStorage on the Android Device
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @param value   Plain long value that will be encrypted and stored in the SecureStorage
-     */
-    public static void setValue(@NonNull Context context,
-                                @NonNull String key,
-                                long value) throws SecureStorageException {
-        setValue(context, key, String.valueOf(value));
-    }
-
-    /**
-     * Takes plain string value, encrypts it and stores it encrypted in the SecureStorage on the Android Device
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @param value   Plain int value that will be encrypted and stored in the SecureStorage
-     */
-    public static void setValue(@NonNull Context context,
-                                @NonNull String key,
-                                int value) throws SecureStorageException {
-        setValue(context, key, String.valueOf(value));
-    }
-
-    /**
-     * Takes plain string value, encrypts it and stores it encrypted in the SecureStorage on the Android Device
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @param value   Plain Set(type: String) value that will be encrypted and stored in the SecureStorage
-     */
-    public static void setValue(@NonNull Context context,
-                                @NonNull String key,
-                                @NonNull Set<String> value) throws SecureStorageException {
-        setValue(context, key + KEY_SET_COUNT_POSTFIX, String.valueOf(value.size()));
-
-        int i = 0;
-        for (String s : value) {
-            setValue(context, key + "_" + (i++), s);
+        try
+        {
+            messageDigest = MessageDigest.getInstance(HASH);
+            messageDigest.update(key.getBytes());
+            return Base64.encodeToString(messageDigest.digest(), Base64.NO_WRAP);
         }
+        catch(NoSuchAlgorithmException e)
+        {  return key;  }
     }
 
-    /**
-     * Gets encrypted String value for given key from the SecureStorage on the Android Device, decrypts it and returns it
-     *
-     * @param context  Context is used internally
-     * @param key      Key used to identify the stored value in SecureStorage
-     * @param defValue Default String value that will be returned if the value with given key doesn't exist or an exception is thrown
-     * @return Decrypted String value associated with given key from SecureStorage
-     */
+    // Not supported yet.
+    // You can propose an implementation.
+    @Override
+    public Map<String, ?> getAll() {
+        return null;
+    }
+
     @Nullable
-    public static String getStringValue(@NonNull Context context,
-                                        @NonNull String key,
-                                        @Nullable String defValue) {
-        Context applicationContext = context.getApplicationContext();
-        String result = getSecureValue(applicationContext, key);
-        try {
-            if (!TextUtils.isEmpty(result)) {
-                return KeystoreTool.decryptMessage(applicationContext, result);
-            } else {
-                return defValue;
+    @Override
+    public String getString(@NonNull String key, @Nullable String defValue)
+    {
+        String cryptValue;
+
+        cryptValue = preferences.getString( hashKey(key), null);
+        try
+        {
+            if(cryptValue != null && !TextUtils.isEmpty(cryptValue))
+            {  return kst.decryptMessage(cryptValue);  }
+        }
+        catch(SecureStorageException e)
+        {}
+        return defValue;
+    }
+
+    @Nullable
+    @Override
+    public Set<String> getStringSet(@NonNull String key, @Nullable Set<String> defValues)
+    {
+        Set<String> cryptSet;
+        Set<String> decrSet;
+
+        try
+        {  cryptSet = preferences.getStringSet( hashKey(key), null);  }
+        catch(ClassCastException e)
+        {  cryptSet = null;  }
+
+        if(cryptSet != null)
+        {
+            decrSet = new HashSet<String>(cryptSet.size());
+            try
+            {
+                for(String valorCifrado : cryptSet)
+                {  decrSet.add(kst.decryptMessage(valorCifrado));  }
+                return decrSet;
             }
-        } catch (SecureStorageException e) {
-            return defValue;
+            catch(SecureStorageException e)
+            {}
         }
+        return defValues;
     }
 
-    /**
-     * Gets encrypted boolean value for given key from the SecureStorage on the Android Device, decrypts it and returns it
-     *
-     * @param context  Context is used internally
-     * @param key      Key used to identify the stored value in SecureStorage
-     * @param defValue Default boolean value that will be returned if the value with given key doesn't exist or an exception is thrown
-     * @return Decrypted boolean value associated with given key from SecureStorage
-     */
-    public static boolean getBooleanValue(@NonNull Context context,
-                                          @NonNull String key,
-                                          boolean defValue) {
-        return Boolean.parseBoolean(getStringValue(context, key, String.valueOf(defValue)));
+    @SuppressWarnings("unchecked")
+    private <T> T getValue(@NonNull String key, T defValue, @NonNull Class<T> tipo)
+    {
+        String decrValue;
+
+        decrValue = getString(key, null);
+
+        if(decrValue != null && !TextUtils.isEmpty(decrValue))
+        {
+            try
+            {  return (T) tipo.getMethod("valueOf", new Class[] { String.class }).invoke(null, decrValue);  }
+            catch(NumberFormatException|IllegalAccessException|InvocationTargetException|NoSuchMethodException e)
+            {}
+        }
+        return defValue;
     }
 
-    /**
-     * Gets encrypted float value for given key from the SecureStorage on the Android Device, decrypts it and returns it
-     *
-     * @param context  Context is used internally
-     * @param key      Key used to identify the stored value in SecureStorage
-     * @param defValue Default float value that will be returned if the value with given key doesn't exist or an exception is thrown
-     * @return Decrypted float value associated with given key from SecureStorage
-     */
-    public static float getFloatValue(@NonNull Context context,
-                                      @NonNull String key,
-                                      float defValue) {
-        return Float.parseFloat(getStringValue(context, key, String.valueOf(defValue)));
+    @Override
+    public int getInt(@NonNull String key, int defValue)
+    {  return getValue(key, defValue, Integer.class);  }
+
+    @Override
+    public long getLong(@NonNull String key, long defValue)
+    {  return getValue(key, defValue, Long.class);  }
+
+    @Override
+    public float getFloat(@NonNull String key, float defValue)
+    {  return getValue(key, defValue, Float.class);  }
+
+    @Override
+    public boolean getBoolean(@NonNull String key, boolean defValue)
+    {  return getValue(key, defValue, Boolean.class);  }
+
+    @Override
+    public boolean contains(@NonNull String key)
+    {
+        try
+        {  return preferences.contains( hashKey(key) ) && kst.keyPairExists();  }
+        catch(SecureStorageException e)
+        {  return false;  }
     }
 
-    /**
-     * Gets encrypted long value for given key from the SecureStorage on the Android Device, decrypts it and returns it
-     *
-     * @param context  Context is used internally
-     * @param key      Key used to identify the stored value in SecureStorage
-     * @param defValue Default long value that will be returned if the value with given key doesn't exist or an exception is thrown
-     * @return Decrypted long value associated with given key from SecureStorage
-     */
-    public static long getLongValue(@NonNull Context context,
-                                    @NonNull String key,
-                                    long defValue) {
-        return Long.parseLong(getStringValue(context, key, String.valueOf(defValue)));
-    }
+    @Override
+    public Editor edit()
+    {  return new Editor();  }
 
-    /**
-     * Gets encrypted int value for given key  from the SecureStorage on the Android Device, decrypts it and returns it
-     *
-     * @param context  Context is used internally
-     * @param key      Key used to identify the stored value in SecureStorage
-     * @param defValue Default int value that will be returned if the value with given key doesn't exist or an exception is thrown
-     * @return Decrypted int value associated with given key from SecureStorage
-     */
-    public static int getIntValue(@NonNull Context context,
-                                  @NonNull String key,
-                                  int defValue) {
-        return Integer.parseInt(getStringValue(context, key, String.valueOf(defValue)));
-    }
+    @Override
+    public void registerOnSharedPreferenceChangeListener(@NonNull OnSharedPreferenceChangeListener listener)
+    {  preferences.registerOnSharedPreferenceChangeListener(listener);  }
 
-    /**
-     * Gets encrypted int value for given key  from the SecureStorage on the Android Device, decrypts it and returns it
-     *
-     * @param context  Context is used internally
-     * @param key      Key used to identify the stored value in SecureStorage
-     * @param defValue Default Set(type: String) value that will be returned if the value with given key doesn't exist or an exception is thrown
-     * @return Decrypted Set(type: String) value associated with given key from SecureStorage
-     */
-    @NonNull
-    public static Set<String> getStringSetValue(@NonNull Context context,
-                                                @NonNull String key,
-                                                @NonNull Set<String> defValue) {
-        int size = getIntValue(context, key + KEY_SET_COUNT_POSTFIX, -1);
+    @Override
+    public void unregisterOnSharedPreferenceChangeListener(@NonNull OnSharedPreferenceChangeListener listener)
+    {  preferences.unregisterOnSharedPreferenceChangeListener(listener);  }
 
-        if (size == -1) {
-            return defValue;
+    public final class Editor implements SharedPreferences.Editor
+    {
+        private SharedPreferences.Editor editor;
+
+        @SuppressLint("CommitPrefEdits")
+        private Editor()
+        {  editor = preferences.edit();  }
+
+        private String cryptString(@NonNull String value)
+        {
+            String cryptValue;
+
+            try
+            {
+                if(!kst.keyPairExists())
+                {  kst.generateKeyPair(appContext);  }
+
+                cryptValue = kst.encryptMessage(value);
+
+                if(cryptValue == null || TextUtils.isEmpty(cryptValue))
+                {  throw new SecureStorageException("Problem during Encryption", null, CRYPTO_EXCEPTION);  }
+            }
+            catch(SecureStorageException e)
+            {
+                // Alt: Log.e()
+                throw new SecurityException("Error using Secure Preferences (encryption)");
+            }
+            return cryptValue;
         }
 
-        Set<String> res = new HashSet<>(size);
-        for (int i = 0; i < size; i++) {
-            res.add(getStringValue(context, key + "_" + i, ""));
+        private void addString(@NonNull String key, @Nullable String value)
+        {
+            if(value != null)
+            {  editor.putString(hashKey(key), cryptString(value));  }
         }
 
-        return res;
-    }
+        private <T> void setValue(@NonNull String key, T valor)
+        {  addString(key, String.valueOf(valor));  }
 
-    /**
-     * Checks if SecureStorage contains a value for the given key (Does not return the value or check what type it is)
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     * @return True if value exists in SecureStorage, otherwise false
-     */
-    public static boolean contains(@NonNull Context context,
-                                   @NonNull String key) {
-        Context applicationContext = context.getApplicationContext();
-        SharedPreferences preferences = applicationContext
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        try {
-            return preferences.contains(key) && KeystoreTool.keyPairExists();
-        } catch (SecureStorageException e) {
-            return false;
+        @Override
+        public SharedPreferences.Editor putString(@NonNull String key, @Nullable String value)
+        {  addString(key, value);  return this;  }
+
+        @Override
+        public SharedPreferences.Editor putStringSet(@NonNull String key, @Nullable Set<String> values)
+        {
+            final Set<String> cryptValues;
+
+            if(values != null)
+            {
+                cryptValues = new HashSet<String>(values.size());
+                for(String value : values)
+                {
+                    if(value != null)
+                    {  cryptValues.add(cryptString(value));  }
+                }
+                if(!cryptValues.isEmpty())
+                {  editor.putStringSet(hashKey(key), cryptValues);  }
+            }
+            return this;
         }
-    }
 
-    /**
-     * Removes the value for a given key from SecureStorage
-     *
-     * @param context Context is used internally
-     * @param key     Key used to identify the stored value in SecureStorage
-     */
-    public static void removeValue(@NonNull Context context,
-                                   @NonNull String key) {
-        Context applicationContext = context.getApplicationContext();
-        removeSecureValue(applicationContext, key);
-    }
+        @Override
+        public SharedPreferences.Editor putInt(@NonNull String key, int value)
+        {  setValue(key, value);  return this;  }
 
-    /**
-     * Clears all values from the SecureStorage on the Android Device and deletes the en/decryption keys
-     * Means new keys/keypairs have to be generated for the library to be able to work
-     *
-     * @param context Context is used internally
-     */
-    public static void clearAllValues(@NonNull Context context) throws SecureStorageException {
-        Context applicationContext = context.getApplicationContext();
-        if (KeystoreTool.keyPairExists()) {
-            KeystoreTool.deleteKeyPair(applicationContext);
+        @Override
+        public SharedPreferences.Editor putLong(@NonNull String key, long value)
+        {  setValue(key, value);  return this;  }
+
+        @Override
+        public SharedPreferences.Editor putFloat(@NonNull String key, float value)
+        {  setValue(key, value);  return this;  }
+
+        @Override
+        public SharedPreferences.Editor putBoolean(@NonNull String key, boolean value)
+        {  setValue(key, value);  return this;  }
+
+        @Override
+        public SharedPreferences.Editor remove(@NonNull String key)
+        {  editor.remove( hashKey(key) );  return this;  }
+
+        @Override
+        public SharedPreferences.Editor clear()
+        {
+            try
+            {
+                if(kst.keyPairExists())
+                {  kst.deleteKeyPair();  }
+
+                editor.clear();
+                return this;
+            }
+            catch(SecureStorageException e)
+            // Alt: Log.e()
+            {  throw new SecurityException("Error using Secure Preferences (clear)");  }
         }
-        clearAllSecureValues(applicationContext);
-    }
 
-    /**
-     * Registers SecureStorageChangeListener to listen to any changes in SecureStorage
-     *
-     * @param context  Context is used internally
-     * @param listener Provided listener with given behaviour from the developer that will be registered
-     */
-    public static void registerOnSharedPreferenceChangeListener(@NonNull Context context,
-                                                                @NonNull SharedPreferences.OnSharedPreferenceChangeListener listener) {
-        Context applicationContext = context.getApplicationContext();
-        SharedPreferences preferences = applicationContext
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        preferences.registerOnSharedPreferenceChangeListener(listener);
-    }
+        @Override
+        public boolean commit()
+        {  return editor.commit();  }
 
-    /**
-     * Unregisters SecureStorageChangeListener from SecureStorage
-     *
-     * @param context  Context is used internally
-     * @param listener Provided listener with given behaviour from the developer that will be unregistered
-     */
-    public static void unregisterOnSharedPreferenceChangeListener(@NonNull Context context,
-                                                                  @NonNull SharedPreferences.OnSharedPreferenceChangeListener listener) {
-        Context applicationContext = context.getApplicationContext();
-        SharedPreferences preferences = applicationContext
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        preferences.unregisterOnSharedPreferenceChangeListener(listener);
-    }
-
-    private static void setSecureValue(@NonNull Context context,
-                                       @NonNull String key,
-                                       @NonNull String value) {
-        SharedPreferences preferences = context
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        preferences.edit().putString(key, value).apply();
-    }
-
-    @Nullable
-    private static String getSecureValue(@NonNull Context context,
-                                         @NonNull String key) {
-        SharedPreferences preferences = context
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        return preferences.getString(key, null);
-    }
-
-    private static void removeSecureValue(@NonNull Context context,
-                                          @NonNull String key) {
-        SharedPreferences preferences = context
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        preferences.edit().remove(key).apply();
-    }
-
-    private static void clearAllSecureValues(@NonNull Context context) {
-        SharedPreferences preferences = context
-                .getSharedPreferences(KEY_SHARED_PREFERENCES_NAME, MODE_PRIVATE);
-        preferences.edit().clear().apply();
+        @Override
+        public void apply()
+        {  editor.apply();  }
     }
 }

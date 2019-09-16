@@ -2,10 +2,7 @@
 
 ## Storing Credentials Securely on Android Devices
 
-[![Build Status](https://travis-ci.org/adorsys/secure-storage-android.svg?branch=master)](https://travis-ci.org/adorsys/secure-storage-android)
-[![Download](https://api.bintray.com/packages/andev/adorsys/securestoragelibrary/images/download.svg) ](https://bintray.com/andev/adorsys/securestoragelibrary/_latestVersion) 
-[![Android Arsenal](https://img.shields.io/badge/Android%20Arsenal-Secure%20Storage%20Android-blue.svg?style=flat)](https://android-arsenal.com/details/1/5648)
-[![API](https://img.shields.io/badge/API-18%2B-blue.svg?style=flat)](https://android-arsenal.com/api?level=18)
+[![API](https://img.shields.io/badge/API-19%2B-blue.svg?style=flat)](https://android-arsenal.com/api?level=19)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
 [![Open Source Love](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://github.com/ellerbrock/open-source-badges/)
 
@@ -18,8 +15,6 @@ To make that possible we have combined the Android Keystore and the SharedPrefer
 
 The secure part about this solution is that those generated keys are never exposed to the kernel when the device is equipped with a “Trusted Execution Environment”. A so called TEE is a secure area inside the main processor of a smartphone which runs code isolated from other processes. That means even if the device gets compromised or hacked those keys can’t be extracted. Already a lot of modern Android phones out there are equipped with a TEE (mostly because it’s often used to play DRM protected material) and it even is a requirement for Google’s Android Nougat certification — so every phone running Android Nougat and later will come with a TEE installed.
 
-SecureStorage uses its own dedicated private SharedPreferences to prevent conflicts with other possible SharedPreference instances and ensure that the content of the SecureStorage can only be accessed from the app which uses this library.
-
 ### Supported API's
 
 __Symmetric__ key generation and storage in the Android KeyStore is supported from __Android 6.0 (API Level 23) onwards.__
@@ -29,110 +24,32 @@ To support more devices SecureStorage uses for now the asymmetric key generation
 
 ### Usage
 
+Add the library to your project settings.gradle:
+
+```groovy
+include ':app', ':securestoragelibrary'
+```
+
 Add the library to your apps build.gradle:
 
 ```groovy
-implementation "de.adorsys.android:securestoragelibrary:${latestSecureStorageVersion}"
+implementation project(':securestoragelibrary')
 ```
 
-To store a string value in your __SecureStorage__ you have to call:
-```kotlin
-SecurePreferences.setValue(context, "KEY", "PLAIN_MESSAGE")
+Get a handle to shared preferences:
+```java
+SharedPreferences preferences = (SharedPreferences) new SecurePreferences(context, "NAME_PREFERENCES_FILE");
 ```
 
-This works for every other primitive data type. So for storing a boolean value:
-```kotlin
-SecurePreferences.setValue(context, "KEY", true/false)
-```
+Then, use it like the [SharedPreferences](https://developer.android.com/training/data-storage/shared-preferences#WriteSharedPreference) APIs
 
-for int
-```kotlin
-SecurePreferences.setValue(context, "KEY", 100)
-```
-
-for float and long
-```kotlin
-SecurePreferences.setValue(context, "KEY", 100.12345)
-```
-
-To retrieve a string value:
-```kotlin
-SecurePreferences.getStringValue(context, "KEY", ""/null)
-```
-
-And respectively for the other types
-```kotlin
-SecurePreferences.getBooleanValue(context, "KEY", false/true)
-```
-```kotlin
-SecurePreferences.getIntValue(context, "KEY", 0)
-```
-```kotlin
-SecurePreferences.getFloatValue(context, "KEY", 0F)
-```
-```kotlin
-SecurePreferences.getLongValue(context, "KEY", 0L)
-```
-
-See if an entry exists in the SecurePreferences. Also returns `false` if the key pair does not exist:
-```kotlin
-SecurePreferences.contains(context, "KEY")
-```
-
-You can also remove an entry from the SecurePreferences:
-```kotlin
-SecurePreferences.removeValue(context, "KEY")
-```
-
-Clearing the SecurePreferences and deleting the KeyPair:
-```kotlin
-SecurePreferences.clearAllValues(context)
-```
 
 Everything about the cryptographic keys such as generating, maintaining and usage is handled internally by the module, so you do not need to worry about it.
 
-If you want to keep track of changes in your SecureStorage you can register an OnSharedPreferencesChangeListener as follows:
-
-``` kotlin
-val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-    // check if the key is the one you are listening for and react
-}
-SecurePreferences.registerOnSharedPreferenceChangeListener(this, listener)
-```
-Unregister the listener as soon as you don't need it any more with
-``` kotlin
-SecurePreferences.unregisterOnSharedPreferenceChangeListener(context, listener)
-```
-
+Note: getAll() method not supported yet. You can propose an implementation.
 
 ### Error handling
-The library throws for everything a SecureStorageException. Within the SecureStorageException you can find a exception type. You can handle the error which occurred with the help of this type as follows:
-
-```kotlin
-try {
-    SecurePreferences.setValue(context, KEY, "Secret")
-    // or
-    val decryptedMessage = SecurePreferences.getStringValue(context, KEY, "")
-} catch (e: SecureStorageException) {
-    handleException(e)
-}
-//
-private fun handleException(e: SecureStorageException) {
-    Log.e(TAG, e.message)
-    when (e.type) {
-        KEYSTORE_NOT_SUPPORTED_EXCEPTION -> Toast.makeText(this, "Oh", Toast.LENGTH_LONG).show()
-        KEYSTORE_EXCEPTION -> Toast.makeText(this, "Fatal - YARK", Toast.LENGTH_LONG).show()
-        CRYPTO_EXCEPTION -> Toast.makeText(this, "2h&$==0j", Toast.LENGTH_LONG).show()
-        INTERNAL_LIBRARY_EXCEPTION -> Toast.makeText(this, "Blame it all on us", Toast.LENGTH_LONG).show()
-        else -> return
-    }
-}
-```
-
-### Contributors:
-[@drilonreqica](https://github.com/drilonreqica)
-
-[@luckyhandler](https://github.com/luckyhandler)
+The library throws for everything a [SecurityException](https://developer.android.com/reference/java/lang/SecurityException). You can change it to [Log](https://developer.android.com/reference/android/util/Log) class.
 
 ### Want to know more:
 
@@ -148,10 +65,19 @@ This link covers security aspect of the android storage:
 <https://developer.android.com/guide/topics/data/data-storage.html>
 <http://stackoverflow.com/a/26077852/3392276>
 
-### Screenshots:
-
-Default Layout             |  After Encryption         |  Extra Options
-:-------------------------:|:-------------------------:|:-------------------------:
-![](https://github.com/adorsys/secure-storage-android/blob/master/screenshots/screenshot-1.jpg)  |  ![](https://github.com/adorsys/secure-storage-android/blob/master/screenshots/screenshot-2.jpg) |  ![](https://github.com/adorsys/secure-storage-android/blob/master/screenshots/screenshot-3.jpg)
-
+### License:
+-------
+    Copyright (C) 2019 SoryApps & adorsys GmbH & Co. KG
+    
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+    
+       https://www.apache.org/licenses/LICENSE-2.0
+    
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
 

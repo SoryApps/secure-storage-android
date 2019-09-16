@@ -1,3 +1,10 @@
+-assumenosideeffects class android.util.Log
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** e(...);
+}
+
 # Add project specific ProGuard rules here.
 # By default, the flags in this file are appended to flags specified
 # in /Users/drilonrecica/Library/Android/sdk/tools/proguard/proguard-android.txt
